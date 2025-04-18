@@ -1,9 +1,9 @@
 import java.sql.*;
 import java.time.LocalDate;
-import java.util.Date;
+import java.util.ArrayList;
 import java.util.Scanner;
 
-public class family_finance_management {
+public class FamilyFinanceManagement {
     Connection connection;
 
     {
@@ -17,68 +17,97 @@ public class family_finance_management {
     Scanner sc = new Scanner(System.in);
 
     public static void main(String[] args) {
-        family_finance_management ffm = new family_finance_management();
+        FamilyFinanceManagement ffm = new FamilyFinanceManagement();
+        ffm.mainLoop();
+    }
+
+    private void mainLoop() {
         try {
-            int i = 1;
-            while (i > 0) {
+            while (true) {
                 System.out.println("Was möchtest du tun?");
                 System.out.println("(0) Programm beenden (1) Daten Ausgeben (2) Nutzer hinzufügen (3) Nutzer Ausgeben (4) Datenbanken Zurücksetzen (5) Eintrag hinzufügen");
-                switch (ffm.sc.nextInt()) {
+                switch (sc.nextInt()) {
                     case 0:
                         System.exit(0);
-                        break;
                     case 1:
-                        ffm.einträgeAusgeben(ffm.connection);
+                        einträgeAusgeben();
                         break;
                     case 2:
-                        ffm.nutzerhinzufuegen(ffm.connection);
+                        nutzerhinzufuegen();
                         break;
                     case 3:
-                        ffm.nutzerausgeben(ffm.connection);
+                        nutzerausgeben();
                         break;
                     case 4:
-                        ffm.resetDatabase(ffm.connection);
+                        resetDatabase();
                         break;
                     case 5:
-                        ffm.eintragHinzufügen(ffm.connection);
+                        eintragHinzufügen();
                 }
             }
-            ffm.einträgeAusgeben(ffm.connection);
-
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public void einträgeAusgeben(Connection connection) throws SQLException {
-        int nid1 = 0;
-        int nid2 = 0;
+    public void einträgeAusgeben() throws SQLException {
+        double stand = 0;
         System.out.println("Zwischen welchen 2 Nutzern soll der Schuldenstand ermittelt werden?");
-        nutzerausgeben(connection);
-        System.out.print("Nutzer 1: ");
-        nid1 = sc.nextInt();
-        System.out.println("");
-        System.out.print("Nutzer 2: ");
-        nid2 = sc.nextInt();
-        Statement allesAusgebenStatement = connection.createStatement();
-        ResultSet resultSet = allesAusgebenStatement.executeQuery("Select IDeintrag, datum, betrag, stand , kommentar, nutzername from nutzer, einträge where (vorstreckerID OR bezahlerID) = " + nid1 + ") AND (vorstreckerID OR bezahlerID) = " + nid2 + ") order by datum;\n");
+        int nid1 = getNid("1");
+        int nid2 = getNid("1");
 
+        Statement allesAusgebenStatement = connection.createStatement();
+        ResultSet resultSet = allesAusgebenStatement.executeQuery("SELECT e.IDeintrag, e.datum, e.betrag, e.stand, e.kommentar, n1.nutzername AS vorstrecker_name, n2.nutzername AS bezahler_name, e.vorstreckerID, e.bezahlerID " +
+                "FROM einträge e " +
+                "LEFT JOIN nutzer n1 ON e.vorstreckerID = n1.IDnutzer " +
+                "LEFT JOIN nutzer n2 ON e.bezahlerID = n2.IDnutzer " +
+                "WHERE (e.vorstreckerID = " + nid1 + " AND e.bezahlerID = " + nid2 + ") OR (e.vorstreckerID = " + nid2 + " AND e.bezahlerID = " + nid1 + ") OR e.vorstreckerID = " + nid1 + " OR e.bezahlerID = " + nid1 + " OR e.vorstreckerID = " + nid2 + " OR e.bezahlerID = " + nid2 + " " +
+                "ORDER BY e.datum;");
         while (resultSet.next()) {
             System.out.print(resultSet.getDate("datum"));
             System.out.print("  ");
             System.out.print(resultSet.getInt("betrag"));
             System.out.print("  ");
-            System.out.print(resultSet.getInt("stand"));
-            System.out.print("  ");
+
+            if (nid1 == resultSet.getInt("vorstreckerID")){
+                stand += resultSet.getInt("betrag");
+            } else {
+                stand -= resultSet.getInt("betrag");
+            }
+
+            System.out.print(stand + "   ");
             System.out.print(resultSet.getString("kommentar"));
             System.out.print("  ");
-
+            System.out.print(resultSet.getInt("vorstreckerID"));
+            System.out.print("  ");
+            System.out.print(resultSet.getInt("bezahlerID"));
+            System.out.println("  ");
         }
         allesAusgebenStatement.close();
         resultSet.close();
+        Statement myps = connection.createStatement();
+        int searchID = nid1;
+        String nid1nn = "error";
+        String nid2nn = "error";
+        ResultSet myrs = myps.executeQuery("Select nutzername from nutzer where IDnutzer = " + searchID + ";");
+        while (myrs.next()){
+            nid1nn = myrs.getString("nutzername");
+        }
+        searchID = nid2;
+        ResultSet myrs2 = myps.executeQuery("Select nutzername from nutzer where IDnutzer = " + searchID + ";");
+        while (myrs2.next()){
+            nid2nn = myrs2.getString("nutzername");
+        }
+        System.out.println(nid1nn + " bekommt von " + nid2nn + " " + stand + " Euro.");
     }
 
-    public void nutzerausgeben(Connection connection) throws SQLException {
+    private int getNid(String userID) throws SQLException {
+        nutzerausgeben();
+        System.out.print("Nutzer id " + userID);
+        return sc.nextInt();
+    }
+
+    public void nutzerausgeben() throws SQLException {
         Statement allesAusgebenStatement = connection.createStatement();
         ResultSet resultSet = allesAusgebenStatement.executeQuery("Select IDnutzer, nutzername from nutzer");
         while (resultSet.next()) {
@@ -91,7 +120,7 @@ public class family_finance_management {
         allesAusgebenStatement.close();
     }
 
-    public void nutzerhinzufuegen(Connection connection) throws SQLException {
+    public void nutzerhinzufuegen() throws SQLException {
         System.out.print("Geben sie einen Nutzernamen an: ");
         String nutzername = sc.next();
         System.out.print("Geben sie ein Passwort an: ");
@@ -102,7 +131,7 @@ public class family_finance_management {
         stnutzerHinzufuegen.close();
     }
 
-    public void resetDatabase(Connection connection) throws SQLException {
+    public void resetDatabase() throws SQLException {
         Statement rdata = connection.createStatement();
         rdata.executeUpdate("drop database if exists schuldenapp;");
         rdata.executeUpdate("create database schuldenapp;");
@@ -127,7 +156,7 @@ public class family_finance_management {
         rdata.close();
     }
 
-    public void eintragHinzufügen(Connection connection) throws SQLException {
+    public void eintragHinzufügen() throws SQLException {
         String datum = "1111-11-11";
         double betrag = 0;
         double stand = 0;
@@ -149,17 +178,13 @@ public class family_finance_management {
         betrag = sc.nextDouble();
         System.out.println("Kommentar (MAX 255 CHARACTERS)");
         kommentar = sc.next();
-        nutzerausgeben(connection);
+        nutzerausgeben();
         System.out.println("Vorstreckender: (ID)");
         vorstrID = sc.nextInt();
         System.out.println("Bezahlender: (ID)");
         bezID = sc.nextInt();
-        Statement statement = connection.createStatement();
-        ResultSet rs = statement.executeQuery("Select betrag from einträge");
-        while (rs.next()) {
-            stand += rs.getDouble("betrag");
-        }
         PreparedStatement ps = connection.prepareStatement("insert into einträge values (null, '" + datum + "' , " + betrag + ", " + stand + ", '" + kommentar + "', " + vorstrID + ", " + bezID+ ");");
         ps.execute();
     }
 }
+
